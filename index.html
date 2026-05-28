@@ -3,26 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ULTRA_DATA_SCULPTURE // v6.0</title>
+    <title>MASTER_DATA_SCULPTURE // v7.0</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <script src="math_utils.js"></script>
     <script src="fluid_solver.js"></script>
-    <script src="shaders.js"></script>
     <script src="hand_processor.js"></script>
+    <script src="shaders.js"></script>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; cursor: none; }
+        #interface { position: absolute; inset: 0; z-index: 100; pointer-events: none; padding: 50px; font-family: 'Courier New', monospace; color: #fff; }
+        .control-panel { pointer-events: auto; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); padding: 30px; width: 350px; backdrop-filter: blur(10px); }
+        input[type=range] { width: 100%; height: 2px; appearance: none; background: #333; outline: none; cursor: pointer; margin: 20px 0; }
+        input[type=range]::-webkit-slider-thumb { appearance: none; width: 15px; height: 15px; background: #fff; border-radius: 50%; }
+        .label { font-size: 10px; letter-spacing: 4px; opacity: 0.5; }
+        .val { font-size: 18px; margin-top: 5px; font-weight: bold; }
+        .ai-panel { margin-top: 30px; }
+        .meter { width: 100%; height: 2px; background: #222; margin-top: 10px; overflow: hidden; }
+        #hand-energy { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s; }
+    </style>
 </head>
 <body>
-    <div id="ui-layer">
-        <div class="control-box">
-            <div class="header">QUANTUM_DENSITY_CONTROL</div>
-            <input type="range" id="p-slider" min="50000" max="500000" step="10000" value="150000">
-            <div id="p-count">150,000 PARTICLES</div>
-        </div>
-        <div class="status-panel">
-            <div id="h-status">LINKING_NEURAL_SENSORS...</div>
-            <div class="meter-bg"><div id="h-meter"></div></div>
+    <div id="interface">
+        <div class="control-panel">
+            <div class="label">CORE_PARTICLE_DENSITY</div>
+            <input type="range" id="density-ctrl" min="50000" max="1000000" step="10000" value="200000">
+            <div id="density-val" class="val">200,000</div>
+            
+            <div class="ai-panel">
+                <div class="label">NEURAL_HAND_INTERACTION</div>
+                <div id="ai-status" class="val">SEARCHING...</div>
+                <div class="meter"><div id="hand-energy"></div></div>
+            </div>
         </div>
     </div>
     <script src="sketch.js"></script>
