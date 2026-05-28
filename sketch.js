@@ -4,10 +4,10 @@ let fluid;
 let hands, video;
 let prevRight = null, prevLeft = null;
 
-const PARTICLE_COUNT = 30000; // Refik Anadol style density
+const PARTICLE_COUNT = 30000; 
 
 async function init() {
-    // 1. Three.js Scene Setup
+  
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
     camera.position.z = 600;
@@ -16,10 +16,10 @@ async function init() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // 2. Initialize Fluid Math (from your motion.js)
+
     fluid = new FluidSimulation(window.innerWidth, window.innerHeight);
 
-    // 3. Load Image & Extract Colors (The "Data" part)
+    
     const img = new Image();
     img.src = 'AdobeStock_421043104_Editorial_Use_Only.jpeg'; 
     img.crossOrigin = "Anonymous";
