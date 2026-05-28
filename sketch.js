@@ -1,172 +1,269 @@
-let scene, camera, renderer, points;
-let particles = { positions: null, originals: null, velocities: null, colors: null };
-let fluid;
-let hands, video;
-let prevRight = null, prevLeft = null;
-const PARTICLE_COUNT = 40000;
+class HandIntelligence {
+    constructor() {
+        this.history = { left: [], right: [] };
+        this.maxHistory = 8;
+        this.minConfidence = 0.85; 
+        this.persistence = { left: 0, right: 0 };
+        this.maxPersistence = 15;
+        this.currentPos = { left: null, right: null };
+        this.smoothedPos = { left: null, right: null };
+    }
 
-async function init() {
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 2000);
-    camera.position.z = 500;
+    process(results) {
+        let detected = { left: false, right: false };
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    document.body.appendChild(renderer.domElement);
+        if (results.multiHandLandmarks && results.multiHandedness) {
+            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                const landmarks = results.multiHandLandmarks[i];
+                const handedness = results.multiHandedness[i];
+                const score = handedness.score;
+                const label = handedness.label === "Left" ? "right" : "left";
 
-    fluid = new FluidSimulation(window.innerWidth, window.innerHeight);
+                if (score < this.minConfidence) continue;
 
-    const img = new Image();
-    img.src = 'AdobeStock_421043104_Editorial_Use_Only.jpeg';
-    img.crossOrigin = "Anonymous";
-    
-    img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 128;
-        canvas.height = 128;
-        ctx.drawImage(img, 0, 0, 128, 128);
-        const imgData = ctx.getImageData(0, 0, 128, 128).data;
+                if (!this.isValidHand(landmarks)) continue;
 
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(PARTICLE_COUNT * 3);
-        const colors = new Float32Array(PARTICLE_COUNT * 3);
-        const originals = new Float32Array(PARTICLE_COUNT * 2);
-        const velocities = new Float32Array(PARTICLE_COUNT * 2);
+                const rawX = (1 - landmarks[8].x) * window.innerWidth - window.innerWidth / 2;
+                const rawY = (0.5 - landmarks[8].y) * window.innerHeight;
 
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-            let x = (Math.random() - 0.5) * window.innerWidth;
-            let y = (Math.random() - 0.5) * window.innerHeight;
-            
-            positions[i * 3] = x;
-            positions[i * 3 + 1] = y;
-            positions[i * 3 + 2] = 0;
-            originals[i * 2] = x;
-            originals[i * 2 + 1] = y;
-
-            let sx = Math.floor(Math.random() * 128);
-            let sy = Math.floor(Math.random() * 128);
-            let idx = (sy * 128 + sx) * 4;
-            
-            colors[i * 3] = imgData[idx] / 255;
-            colors[i * 3 + 1] = imgData[idx + 1] / 255;
-            colors[i * 3 + 2] = imgData[idx + 2] / 255;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        
-        const material = new THREE.PointsMaterial({
-            size: 1.5,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.8,
-            blending: THREE.AdditiveBlending
-        });
-
-        points = new THREE.Points(geometry, material);
-        scene.add(points);
-        particles = { positions, originals, velocities, colors };
-
-        setupAI();
-        animate();
-    };
-}
-
-async function setupAI() {
-    video = document.createElement('video');
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    video.srcObject = stream;
-    video.play();
-
-    hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-    
-    hands.setOptions({ 
-        maxNumHands: 2, 
-        modelComplexity: 1,
-        minDetectionConfidence: 0.8,
-        minTrackingConfidence: 0.8 
-    });
-
-    hands.onResults(onResults);
-
-    const mpCamera = new Camera(video, {
-        onFrame: async () => { await hands.send({ image: video }); },
-        width: 640, height: 480
-    });
-    mpCamera.start();
-}
-
-function onResults(results) {
-    if (results.multiHandLandmarks && results.multiHandedness) {
-        let activeRight = false;
-        let activeLeft = false;
-
-        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-            const hand = results.multiHandLandmarks[i];
-            const label = results.multiHandedness[i].label;
-            const score = results.multiHandedness[i].score;
-
-            if (score < 0.85) continue;
-
-            const x = (1 - hand[8].x) * window.innerWidth - window.innerWidth / 2;
-            const y = (0.5 - hand[8].y) * window.innerHeight;
-
-            if (label === "Left") {
-                if (prevRight) {
-                    fluid.addForce(x + window.innerWidth / 2, window.innerHeight / 2 - y, x - prevRight.x, y - prevRight.y, 160);
-                }
-                prevRight = { x, y };
-                activeRight = true;
-            } else {
-                if (prevLeft) {
-                    fluid.addForce(x + window.innerWidth / 2, window.innerHeight / 2 - y, x - prevLeft.x, y - prevLeft.y, 160);
-                }
-                prevLeft = { x, y };
-                activeLeft = true;
+                this.updateHistory(label, { x: rawX, y: rawY });
+                detected[label] = true;
+                this.persistence[label] = this.maxPersistence;
             }
         }
 
-        if (!activeRight) prevRight = null;
-        if (!activeLeft) prevLeft = null;
-    } else {
-        prevRight = null;
-        prevLeft = null;
+        this.handlePersistence("left", detected.left);
+        this.handlePersistence("right", detected.right);
+
+        return {
+            left: this.getSmoothed("left"),
+            right: this.getSmoothed("right")
+        };
     }
-}
 
-function animate() {
-    requestAnimationFrame(animate);
-    if (!points) return;
-
-    fluid.update();
-    const posAttr = points.geometry.attributes.position;
-    
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-        let px = particles.positions[i * 3];
-        let py = particles.positions[i * 3 + 1];
-        const flow = fluid.getVelocity(px + window.innerWidth / 2, window.innerHeight / 2 - py);
+    isValidHand(landmarks) {
+        const wrist = landmarks[0];
+        const indexMcp = landmarks[5];
+        const pinkyMcp = landmarks[17];
         
-        particles.velocities[i * 2] += flow.x * 0.2;
-        particles.velocities[i * 2 + 1] += flow.y * 0.2;
-        particles.velocities[i * 2] *= 0.94;
-        particles.velocities[i * 2 + 1] *= 0.94;
+        const palmSize = Math.sqrt(
+            Math.pow(indexMcp.x - wrist.x, 2) + 
+            Math.pow(indexMcp.y - wrist.y, 2)
+        );
 
-        particles.positions[i * 3] += particles.velocities[i * 2];
-        particles.positions[i * 3 + 1] += particles.velocities[i * 2 + 1];
-        particles.positions[i * 3] += (particles.originals[i * 2] - particles.positions[i * 3]) * 0.01;
-        particles.positions[i * 3 + 1] += (particles.originals[i * 2 + 1] - particles.positions[i * 3 + 1]) * 0.01;
+        return palmSize > 0.05 && palmSize < 0.4;
     }
 
-    posAttr.needsUpdate = true;
-    renderer.render(scene, camera);
+    updateHistory(label, pos) {
+        this.history[label].push(pos);
+        if (this.history[label].length > this.maxHistory) {
+            this.history[label].shift();
+        }
+    }
+
+    handlePersistence(label, isDetected) {
+        if (!isDetected) {
+            this.persistence[label]--;
+            if (this.persistence[label] <= 0) {
+                this.history[label] = [];
+            }
+        }
+    }
+
+    getSmoothed(label) {
+        if (this.history[label].length === 0) return null;
+        let avgX = 0, avgY = 0;
+        this.history[label].forEach(p => {
+            avgX += p.x;
+            avgY += p.y;
+        });
+        return {
+            x: avgX / this.history[label].length,
+            y: avgY / this.history[label].length
+        };
+    }
 }
 
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
+class SculptureEngine {
+    constructor() {
+        this.particleCount = 50000;
+        this.initScene();
+        this.initFluid();
+        this.intelligence = new HandIntelligence();
+        this.initParticles();
+        this.initAI();
+    }
 
-init();
+    initScene() {
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
+        this.camera.position.z = 600;
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(this.renderer.domElement);
+
+        window.addEventListener('resize', () => this.onResize());
+    }
+
+    initFluid() {
+        this.fluid = new FluidSimulation(window.innerWidth, window.innerHeight);
+    }
+
+    async initParticles() {
+        const loader = new THREE.TextureLoader();
+        const img = await new Promise(resolve => {
+            const i = new Image();
+            i.src = 'AdobeStock_421043104_Editorial_Use_Only.jpeg';
+            i.crossOrigin = "anonymous";
+            i.onload = () => resolve(i);
+        });
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 128; canvas.height = 128;
+        ctx.drawImage(img, 0, 0, 128, 128);
+        const data = ctx.getImageData(0, 0, 128, 128).data;
+
+        const geo = new THREE.BufferGeometry();
+        this.posArray = new Float32Array(this.particleCount * 3);
+        this.colArray = new Float32Array(this.particleCount * 3);
+        this.originArray = new Float32Array(this.particleCount * 2);
+        this.velArray = new Float32Array(this.particleCount * 2);
+
+        for (let i = 0; i < this.particleCount; i++) {
+            const x = (Math.random() - 0.5) * window.innerWidth * 1.2;
+            const y = (Math.random() - 0.5) * window.innerHeight * 1.2;
+            
+            this.posArray[i*3] = x;
+            this.posArray[i*3+1] = y;
+            this.posArray[i*3+2] = (Math.random() - 0.5) * 50;
+
+            this.originArray[i*2] = x;
+            this.originArray[i*2+1] = y;
+
+            const rx = Math.floor(Math.random() * 128);
+            const ry = Math.floor(Math.random() * 128);
+            const idx = (ry * 128 + rx) * 4;
+
+            this.colArray[i*3] = data[idx] / 255;
+            this.colArray[i*3+1] = data[idx+1] / 255;
+            this.colArray[i*3+2] = data[idx+2] / 255;
+        }
+
+        geo.setAttribute('position', new THREE.BufferAttribute(this.posArray, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(this.colArray, 3));
+
+        const mat = new THREE.PointsMaterial({
+            size: 1.8,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        this.points = new THREE.Points(geo, mat);
+        this.scene.add(this.points);
+    }
+
+    async initAI() {
+        this.video = document.createElement('video');
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: 640, height: 480 } 
+        });
+        this.video.srcObject = stream;
+        this.video.play();
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.8,
+            minTrackingConfidence: 0.8
+        });
+
+        hands.onResults((res) => {
+            const data = this.intelligence.process(res);
+            this.updateForces(data);
+        });
+
+        const camera = new Camera(this.video, {
+            onFrame: async () => { await hands.send({ image: this.video }); }
+        });
+        camera.start();
+        document.getElementById('overlay').innerText = "SYSTEM: ONLINE. DATA STREAM ACTIVE.";
+    }
+
+    updateForces(data) {
+        if (data.right) {
+            if (this.lastRight) {
+                const vx = data.right.x - this.lastRight.x;
+                const vy = data.right.y - this.lastRight.y;
+                this.fluid.addForce(data.right.x + window.innerWidth/2, window.innerHeight/2 - data.right.y, vx, vy, 150);
+            }
+            this.lastRight = { ...data.right };
+        } else { this.lastRight = null; }
+
+        if (data.left) {
+            if (this.lastLeft) {
+                const vx = data.left.x - this.lastLeft.x;
+                const vy = data.left.y - this.lastLeft.y;
+                this.fluid.addForce(data.left.x + window.innerWidth/2, window.innerHeight/2 - data.left.y, vx, vy, 150);
+            }
+            this.lastLeft = { ...data.left };
+        } else { this.lastLeft = null; }
+    }
+
+    onResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    render() {
+        if (!this.points) return;
+
+        this.fluid.update();
+        const posAttr = this.points.geometry.attributes.position;
+
+        for (let i = 0; i < this.particleCount; i++) {
+            const px = this.posArray[i*3];
+            const py = this.posArray[i*3+1];
+
+            const flow = this.fluid.getVelocity(px + window.innerWidth/2, window.innerHeight/2 - py);
+
+            this.velArray[i*2] += flow.x * 0.25;
+            this.velArray[i*2+1] += flow.y * 0.25;
+
+            this.velArray[i*2] *= 0.93;
+            this.velArray[i*2+1] *= 0.93;
+
+            this.posArray[i*3] += this.velArray[i*2];
+            this.posArray[i*3+1] += this.velArray[i*2+1];
+
+            const dx = this.originArray[i*2] - this.posArray[i*3];
+            const dy = this.originArray[i*2+1] - this.posArray[i*3+1];
+            
+            this.posArray[i*3] += dx * 0.015;
+            this.posArray[i*3+1] += dy * 0.015;
+            
+            this.posArray[i*3+2] = Math.sin(Date.now() * 0.001 + i) * 10;
+        }
+
+        posAttr.needsUpdate = true;
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    loop() {
+        this.render();
+        requestAnimationFrame(() => this.loop());
+    }
+}
+
+const engine = new SculptureEngine();
+engine.loop();
