@@ -3,17 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Data Sculpture</title>
+    <title>High-Accuracy Data Sculpture</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <script src="motion.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; cursor: none; }
-        canvas { display: block; width: 100vw; height: 100vh; }
+        body { margin: 0; overflow: hidden; background: #000; cursor: crosshair; }
+        #overlay {
+            position: absolute; top: 20px; left: 20px; color: rgba(255,255,255,0.5);
+            font-family: monospace; pointer-events: none; z-index: 10;
+        }
     </style>
 </head>
 <body>
+    <div id="overlay">SYSTEM: INITIALIZING GPU RENDERER...</div>
     <script src="sketch.js"></script>
 </body>
 </html>
