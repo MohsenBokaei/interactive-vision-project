@@ -2,17 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finger Tracking Art</title>
-    <!-- 1. MediaPipe Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <!-- 2. p5.js -->
+    <title>Optimized Hand Art</title>
+    <!-- p5.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
-    <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; }
-        canvas { display: block; }
-    </style>
+    <!-- ml5.js (The most optimized library for p5 hand tracking) -->
+    <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
+    <style>body { margin: 0; overflow: hidden; background: #000; }</style>
 </head>
 <body>
     <script src="sketch.js"></script>
