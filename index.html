@@ -3,36 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fluid Data Sculpture | Ultra-Advanced</title>
+    <title>ULTRA-ADVANCED FLUID SCULPTURE</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: 'Segoe UI', sans-serif; }
-        canvas { display: block; width: 100vw; height: 100vh; }
-        #ui-container {
-            position: absolute; top: 30px; left: 30px; z-index: 100;
-            pointer-events: none; border-left: 1px solid rgba(0, 255, 204, 0.3); padding-left: 20px;
-        }
-        .stat-line { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px; opacity: 0.6; }
-        #loading-screen {
-            position: fixed; inset: 0; background: #000; z-index: 1000;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-        }
-        .loader-bar { width: 200px; height: 2px; background: #222; margin-top: 20px; position: relative; }
-        .loader-progress { position: absolute; height: 100%; width: 0%; background: #00ffcc; transition: width 0.3s; }
+        body { margin: 0; overflow: hidden; background: #000; cursor: crosshair; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #00ffcc; font-family: monospace; pointer-events: none; }
+        .bar-container { width: 200px; height: 4px; background: #111; margin-top: 10px; }
+        #force-meter { width: 0%; height: 100%; background: #00ffcc; transition: width 0.1s; }
     </style>
 </head>
 <body>
-    <div id="loading-screen">
-        <div class="stat-line">Synchronizing GPU Context</div>
-        <div class="loader-bar"><div id="progress" class="loader-progress"></div></div>
-    </div>
-    <div id="ui-container">
-        <div class="stat-line">Renderer: WebGL_2.0_Advanced</div>
-        <div class="stat-line">AI_Model: MediaPipe_Hand_Heavy</div>
-        <div class="stat-line" id="fps-counter">FPS: --</div>
-        <div class="stat-line" id="hand-status">H_TRACK: SEARCHING...</div>
+    <div id="ui">
+        <div>SCULPTURE_OS v4.0</div>
+        <div id="hand-label">HAND_SIGNAL: DISCONNECTED</div>
+        <div class="bar-container"><div id="force-meter"></div></div>
     </div>
     <script src="motion.js"></script>
     <script src="shaders.js"></script>
