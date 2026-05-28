@@ -12,10 +12,9 @@ class FluidSimulation {
             this.grid[i] = p.createVector(0, 0);
         }
         
-        this.friction = 0.95; // How long the motion lasts (0.99 = long, 0.9 = short)
+        this.friction = 0.95; 
     }
 
-    // Add "Force" to the liquid using hand movement
     addForce(x, y, vx, vy, radius) {
         let centerX = this.p.floor(x / this.res);
         let centerY = this.p.floor(y / this.res);
@@ -39,16 +38,15 @@ class FluidSimulation {
     }
 
     update() {
-        // Apply friction and "breathe" (Natural Perlin Noise movement)
         let t = this.p.millis() * 0.001;
         for (let i = 0; i < this.grid.length; i++) {
             this.grid[i].mult(this.friction);
             
-            // Add Refik Anadol-style "Latent" movement (subtle background drift)
+            // Subtle "Breathing" movement
             let x = i % this.cols;
-            let y = p.floor(i / this.cols);
-            let noise = this.p.noise(x * 0.1, y * 0.1, t);
-            let angle = noise * this.p.TWO_PI;
+            let y = this.p.floor(i / this.cols);
+            let n = this.p.noise(x * 0.1, y * 0.1, t);
+            let angle = n * this.p.TWO_PI;
             this.grid[i].add(p5.Vector.fromAngle(angle).mult(0.1));
         }
     }
