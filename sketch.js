@@ -1,168 +1,142 @@
-const sketch = (p) => {
-    let cam, bgImg;
-    let particles = [];
-    let fluid;
-    let hands;
+let scene, camera, renderer, points;
+let particles = [];
+let fluid;
+let hands, video;
+let prevRight = null, prevLeft = null;
+let bgImg;
+
+const PARTICLE_COUNT = 30000; // Three.js handles this easily!
+
+async function init() {
+    // 1. Scene Setup
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.z = 800;
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    fluid = new FluidSimulation(window.innerWidth, window.innerHeight);
+
+    // 2. Load Image Data
+    const loader = new THREE.TextureLoader();
+    bgImg = await loader.loadAsync('AdobeStock_421043104_Editorial_Use_Only.jpeg');
     
-    let greenCenter = null; 
-    let blueCenter = null;  
-    let prevGreen = null;
-    let prevBlue = null;
+    // Create Particle Data
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    const originals = new Float32Array(PARTICLE_COUNT * 2);
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        let x = (Math.random() - 0.5) * window.innerWidth;
+        let y = (Math.random() - 0.5) * window.innerHeight;
+        
+        positions[i * 3] = x;
+        positions[i * 3 + 1] = y;
+        positions[i * 3 + 2] = 0;
+
+        originals[i * 2] = x;
+        originals[i * 2 + 1] = y;
+
+        // Set colors to white/blue for that data look
+        colors[i * 3] = 0.5;
+        colors[i * 3 + 1] = 0.8;
+        colors[i * 3 + 2] = 1.0;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
-    let aiLoaded = false;
+    const material = new THREE.PointsMaterial({
+        size: 3,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending // Anadol style glow
+    });
 
-    p.preload = () => {
-        bgImg = p.loadImage("AdobeStock_421043104_Editorial_Use_Only.jpeg");
-    };
+    points = new THREE.Points(geometry, material);
+    scene.add(points);
+    particles = { positions, originals, velocities: new Float32Array(PARTICLE_COUNT * 2) };
 
-    p.setup = () => {
-        p.createCanvas(1600, 900);
-        bgImg.resize(p.width, p.height);
-        
-        fluid = new FluidSimulation(p, p.width, p.height);
+    // 3. MediaPipe Setup
+    video = document.createElement('video');
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    video.play();
 
-        bgImg.loadPixels();
-        for (let y = 0; y < bgImg.height; y += 12) {
-            for (let x = 0; x < bgImg.width; x += 12) {
-                let i = (x + y * bgImg.width) * 4;
-                let c = p.color(bgImg.pixels[i], bgImg.pixels[i+1], bgImg.pixels[i+2], 200);
-                particles.push(new ImageParticle(p, x, y, c));
-            }
-        }
+    hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+    hands.setOptions({ maxNumHands: 2, modelComplexity: 0 });
+    hands.onResults(onResults);
 
-        // Setup Camera
-        cam = p.createCapture(p.VIDEO);
-        cam.size(640, 480);
-        cam.hide();
+    const mpCamera = new Camera(video, {
+        onFrame: async () => { await hands.send({ image: video }); },
+        width: 640, height: 480
+    });
+    mpCamera.start();
 
-        // Initialize MediaPipe Hands
-        hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
+    animate();
+}
 
-        hands.setOptions({
-            maxNumHands: 2,
-            modelComplexity: 0, // Lite model for better performance
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
+function onResults(results) {
+    if (results.multiHandLandmarks && results.multiHandedness) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+            const hand = results.multiHandLandmarks[i];
+            const label = results.multiHandedness[i].label;
+            
+            // Map camera to screen
+            const x = (1 - hand[8].x) * window.innerWidth - window.innerWidth/2;
+            const y = (0.5 - hand[8].y) * window.innerHeight;
+            const currentPos = { x, y };
 
-        hands.onResults(onResults);
-
-        // Explicitly start the camera connection
-        const camera = new Camera(cam.elt, {
-            onFrame: async () => {
-                await hands.send({ image: cam.elt });
-            },
-            width: 640,
-            height: 480
-        });
-        camera.start();
-    };
-
-    function onResults(results) {
-        aiLoaded = true; // Confirms AI is actually sending data
-        
-        // Reset centers before processing
-        let foundRight = false;
-        let foundLeft = false;
-
-        if (results.multiHandLandmarks && results.multiHandedness) {
-            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-                let hand = results.multiHandLandmarks[i];
-                let label = results.multiHandedness[i].label; // "Left" or "Right"
-                
-                // Track Index Finger Tip (Landmark 8)
-                let x = (1 - hand[8].x) * p.width; // Flip for mirror
-                let y = hand[8].y * p.height;
-                let currentPos = p.createVector(x, y);
-
-                if (label === "Left") { // Mirror logic: AI Left = Your Right hand
-                    if (prevGreen) {
-                        let force = p5.Vector.sub(currentPos, prevGreen);
-                        fluid.addForce(currentPos.x, currentPos.y, force.x, force.y, 100);
-                    }
-                    greenCenter = currentPos;
-                    prevGreen = currentPos.copy();
-                    foundRight = true;
-                } else {
-                    if (prevBlue) {
-                        let force = p5.Vector.sub(currentPos, prevBlue);
-                        fluid.addForce(currentPos.x, currentPos.y, force.x, force.y, 100);
-                    }
-                    blueCenter = currentPos;
-                    prevBlue = currentPos.copy();
-                    foundLeft = true;
+            if (label === "Left") { // Right hand
+                if (prevRight) {
+                    fluid.addForce(x + window.innerWidth/2, window.innerHeight/2 - y, (x - prevRight.x), (y - prevRight.y), 150);
                 }
+                prevRight = currentPos;
+            } else { // Left hand
+                if (prevLeft) {
+                    fluid.addForce(x + window.innerWidth/2, window.innerHeight/2 - y, (x - prevLeft.x), (y - prevLeft.y), 150);
+                }
+                prevLeft = currentPos;
             }
-        }
-        
-        if (!foundRight) greenCenter = null;
-        if (!foundLeft) blueCenter = null;
-    }
-
-    p.draw = () => {
-        p.background(0, 40); 
-        
-        fluid.update();
-
-        // Reveal and Move Particles
-        for (let part of particles) {
-            let flow = fluid.getVelocity(part.x, part.y);
-            
-            // Reveal if EITHER hand is nearby
-            if (greenCenter && p.dist(part.x, part.y, greenCenter.x, greenCenter.y) < 100) part.visible = true;
-            if (blueCenter && p.dist(part.x, part.y, blueCenter.x, blueCenter.y) < 100) part.visible = true;
-            
-            part.applyFlow(flow);
-            part.update();
-            part.show();
-        }
-
-        // --- DEBUG LAYER (Remove this once it works) ---
-        if (!aiLoaded) {
-            p.fill(255);
-            p.textAlign(p.CENTER);
-            p.text("AI LOADING... STAND IN VIEW", p.width/2, p.height/2);
-        }
-
-        // Draw visual dots so you know where the AI is tracking
-        p.noStroke();
-        if (greenCenter) {
-            p.fill(0, 255, 100);
-            p.ellipse(greenCenter.x, greenCenter.y, 20, 20);
-        }
-        if (blueCenter) {
-            p.fill(0, 150, 255);
-            p.ellipse(blueCenter.x, blueCenter.y, 20, 20);
-        }
-    };
-};
-
-// --- IMAGE PARTICLE CLASS ---
-class ImageParticle {
-    constructor(p, x, y, c) {
-        this.p = p; this.x = x; this.y = y; this.ox = x; this.oy = y;
-        this.c = c; this.visible = false;
-        this.vx = 0; this.vy = 0;
-    }
-    applyFlow(f) { 
-        this.vx += f.x * 0.12; 
-        this.vy += f.y * 0.12; 
-    }
-    update() {
-        this.x += this.vx; this.y += this.vy;
-        this.vx *= 0.94; // Friction
-        this.vy *= 0.94;
-        this.x += (this.ox - this.x) * 0.02; // Snap back
-        this.y += (this.oy - this.y) * 0.02;
-    }
-    show() {
-        if (this.visible) {
-            this.p.fill(this.c); this.p.noStroke();
-            this.p.rect(this.x, this.y, 4, 4);
         }
     }
 }
 
-new p5(sketch);
+function animate() {
+    requestAnimationFrame(animate);
+    fluid.update();
+
+    const posAttr = points.geometry.attributes.position;
+    
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        let x = particles.positions[i * 3];
+        let y = particles.positions[i * 3 + 1];
+
+        // Apply Fluid Flow
+        const flow = fluid.getVelocity(x + window.innerWidth/2, window.innerHeight/2 - y);
+        
+        particles.velocities[i * 2] += flow.x * 0.1;
+        particles.velocities[i * 2 + 1] += flow.y * 0.1;
+
+        // Friction
+        particles.velocities[i * 2] *= 0.95;
+        particles.velocities[i * 2 + 1] *= 0.95;
+
+        // Apply Velocity
+        particles.positions[i * 3] += particles.velocities[i * 2];
+        particles.positions[i * 3 + 1] += particles.velocities[i * 2 + 1];
+
+        // Pull back to original
+        particles.positions[i * 3] += (particles.originals[i * 2] - particles.positions[i * 3]) * 0.02;
+        particles.positions[i * 3 + 1] += (particles.originals[i * 2 + 1] - particles.positions[i * 3 + 1]) * 0.02;
+    }
+
+    posAttr.needsUpdate = true;
+    renderer.render(scene, camera);
+}
+
+init();
