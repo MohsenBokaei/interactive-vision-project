@@ -1,24 +1,23 @@
-// motion.js - Fluid Dynamics and Flow Field Engine
+// motion.js - Pure JS Fluid Simulation (No p5.js needed)
 class FluidSimulation {
-    constructor(p, width, height) {
-        this.p = p;
-        this.res = 20; // Grid resolution
-        this.cols = p.floor(width / this.res);
-        this.rows = p.floor(height / this.res);
+    constructor(width, height) {
+        this.res = 30; 
+        this.cols = Math.floor(width / this.res);
+        this.rows = Math.floor(height / this.res);
         
-        // Velocity Grid: Stores the direction of flow at every point
+        // Velocity Grid
         this.grid = new Array(this.cols * this.rows);
         for (let i = 0; i < this.grid.length; i++) {
-            this.grid[i] = p.createVector(0, 0);
+            this.grid[i] = { x: 0, y: 0 };
         }
         
-        this.friction = 0.95; 
+        this.friction = 0.96;
     }
 
     addForce(x, y, vx, vy, radius) {
-        let centerX = this.p.floor(x / this.res);
-        let centerY = this.p.floor(y / this.res);
-        let r = this.p.floor(radius / this.res);
+        let centerX = Math.floor(x / this.res);
+        let centerY = Math.floor(y / this.res);
+        let r = Math.floor(radius / this.res);
 
         for (let i = -r; i <= r; i++) {
             for (let j = -r; j <= r; j++) {
@@ -27,36 +26,31 @@ class FluidSimulation {
 
                 if (col >= 0 && col < this.cols && row >= 0 && row < this.rows) {
                     let index = col + row * this.cols;
-                    let d = this.p.dist(centerX, centerY, col, row);
-                    let strength = this.p.map(d, 0, r, 1, 0);
-                    if (strength > 0) {
-                        this.grid[index].add(vx * strength, vy * strength);
-                    }
+                    let dx = col - centerX;
+                    let dy = row - centerY;
+                    let d = Math.sqrt(dx*dx + dy*dy);
+                    let strength = Math.max(0, 1 - d / r);
+                    
+                    this.grid[index].x += vx * strength * 0.5;
+                    this.grid[index].y += vy * strength * 0.5;
                 }
             }
         }
     }
 
     update() {
-        let t = this.p.millis() * 0.001;
         for (let i = 0; i < this.grid.length; i++) {
-            this.grid[i].mult(this.friction);
-            
-            // Subtle "Breathing" movement
-            let x = i % this.cols;
-            let y = this.p.floor(i / this.cols);
-            let n = this.p.noise(x * 0.1, y * 0.1, t);
-            let angle = n * this.p.TWO_PI;
-            this.grid[i].add(this.p.Vector.fromAngle(angle).mult(0.1));
+            this.grid[i].x *= this.friction;
+            this.grid[i].y *= this.friction;
         }
     }
 
     getVelocity(x, y) {
-        let col = this.p.floor(x / this.res);
-        let row = this.p.floor(y / this.res);
+        let col = Math.floor(x / this.res);
+        let row = Math.floor(y / this.res);
         if (col >= 0 && col < this.cols && row >= 0 && row < this.rows) {
             return this.grid[col + row * this.cols];
         }
-        return this.p.createVector(0, 0);
+        return { x: 0, y: 0 };
     }
 }
