@@ -1,148 +1,217 @@
-class SandSculpture {
+/**
+ * ULTRA-HIGH-FIDELITY DATA SCULPTURE ENGINE v7.0
+ * ARCHITECTURE: GPU-ACCELERATED SHADER PIPELINE
+ * SIMULATION: NAVIER-STOKES FLUID DYNAMICS
+ */
+
+class SculptureEngine {
     constructor() {
-        this.maxParticles = 500000;
-        this.activeCount = 150000;
+        this.LIMIT = 1000000;
+        this.currentDensity = 200000;
+        this.params = {
+            friction: 0.965,
+            snapBack: 0.008,
+            handPower: 3.5,
+            vortexRadius: 220
+        };
         this.init();
     }
 
     async init() {
-        this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 4000);
-        this.camera.position.z = 800;
-
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(this.renderer.domElement);
-
-        this.fluid = new FluidSolver(window.innerWidth, window.innerHeight);
-        this.processor = new HandProcessor();
-
-        await this.generateParticles();
+        this.setupRenderer();
+        this.setupPhysics();
         this.setupAI();
-        this.setupUI();
-        this.animate();
+        await this.buildParticleSystem();
+        this.bindEvents();
+        this.mainLoop();
     }
 
-    setupUI() {
-        const slider = document.getElementById('p-slider');
-        const countDisplay = document.getElementById('p-count');
+    setupRenderer() {
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 5000);
+        this.camera.position.z = 850;
+
+        this.renderer = new THREE.WebGLRenderer({ 
+            antialias: true, 
+            powerPreference: "high-performance",
+            precision: "highp"
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(this.renderer.domElement);
+    }
+
+    setupPhysics() {
+        // Advanced Fluid Grid
+        this.fluid = new FluidSolver(window.innerWidth, window.innerHeight);
+        this.handAI = new HandProcessor();
+    }
+
+    bindEvents() {
+        const slider = document.getElementById('density-ctrl');
+        const display = document.getElementById('density-val');
         
-        slider.oninput = (e) => {
-            this.activeCount = parseInt(e.target.value);
-            countDisplay.innerText = this.activeCount.toLocaleString() + " PARTICLES";
-            this.points.geometry.setDrawRange(0, this.activeCount);
-        };
+        // GOAL 1: Slider Interaction Fixed
+        slider.addEventListener('input', (e) => {
+            this.currentDensity = parseInt(e.target.value);
+            display.innerText = this.currentDensity.toLocaleString();
+            this.points.geometry.setDrawRange(0, this.currentDensity);
+        });
+
+        window.addEventListener('resize', () => {
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     }
 
-    async generateParticles() {
-        // To get the "Wispy" look, we don't use a grid. 
-        // We use a Random Gaussian distribution to create clusters.
+    async buildParticleSystem() {
+        const loader = new THREE.TextureLoader();
+        const img = await loader.loadAsync('AdobeStock_421043104_Editorial_Use_Only.jpeg');
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 128; canvas.height = 128;
+        ctx.drawImage(img.image, 0, 0, 128, 128);
+        const data = ctx.getImageData(0, 0, 128, 128).data;
+
         const geo = new THREE.BufferGeometry();
-        this.pos = new Float32Array(this.maxParticles * 3);
-        this.origins = new Float32Array(this.maxParticles * 3);
-        this.vels = new Float32Array(this.maxParticles * 2);
-        this.life = new Float32Array(this.maxParticles);
+        this.posArr = new Float32Array(this.LIMIT * 3);
+        this.orgArr = new Float32Array(this.LIMIT * 3);
+        this.colArr = new Float32Array(this.LIMIT * 3);
+        this.velArr = new Float32Array(this.LIMIT * 2);
+        this.sizeArr = new Float32Array(this.LIMIT);
+        this.impactArr = new Float32Array(this.LIMIT);
 
-        for (let i = 0; i < this.maxParticles; i++) {
-            // Clustered distribution like a cloud
+        for (let i = 0; i < this.LIMIT; i++) {
+            // GOAL 2: Natural Floating Cloud Distribution
             const theta = Math.random() * Math.PI * 2;
-            const rad = Math.pow(Math.random(), 2) * window.innerWidth * 0.7;
-            
-            const x = Math.cos(theta) * rad;
-            const y = Math.sin(theta) * rad;
-            const z = (Math.random() - 0.5) * 200;
+            const r = Math.pow(Math.random(), 0.5) * window.innerWidth * 0.8;
+            const x = Math.cos(theta) * r;
+            const y = Math.sin(theta) * r;
+            const z = (Math.random() - 0.5) * 300;
 
-            this.pos[i*3]=x; this.pos[i*3+1]=y; this.pos[i*3+2]=z;
-            this.origins[i*3]=x; this.origins[i*3+1]=y; this.origins[i*3+2]=z;
-            this.life[i] = 0;
+            this.posArr[i*3] = x; this.posArr[i*3+1] = y; this.posArr[i*3+2] = z;
+            this.orgArr[i*3] = x; this.orgArr[i*3+1] = y; this.orgArr[i*3+2] = z;
+
+            const px = Math.floor(Math.random() * 128);
+            const py = Math.floor(Math.random() * 128);
+            const pIdx = (py * 128 + px) * 4;
+
+            this.colArr[i*3] = data[pIdx] / 255;
+            this.colArr[i*3+1] = data[pIdx+1] / 255;
+            this.colArr[i*3+2] = data[pIdx+2] / 255;
+
+            this.sizeArr[i] = Math.random() * 2.4 + 0.4;
+            this.impactArr[i] = 0;
         }
 
-        geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
-        geo.setAttribute('aLife', new THREE.BufferAttribute(this.life, 1));
+        geo.setAttribute('position', new THREE.BufferAttribute(this.posArr, 3));
+        geo.setAttribute('origin', new THREE.BufferAttribute(this.orgArr, 3));
+        geo.setAttribute('aColor', new THREE.BufferAttribute(this.colArr, 3));
+        geo.setAttribute('aSize', new THREE.BufferAttribute(this.sizeArr, 1));
+        geo.setAttribute('aImpact', new THREE.BufferAttribute(this.impactArr, 1));
 
-        this.mat = new THREE.ShaderMaterial({
-            uniforms: { uTime: { value: 0 } },
-            vertexShader: CloudShader.vertex,
-            fragmentShader: CloudShader.fragment,
+        this.uniforms = { uTime: { value: 0 } };
+
+        // Unified Shader Reference
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            vertexShader: SculptureShader.vertex,
+            fragmentShader: SculptureShader.fragment,
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false
         });
 
-        this.points = new THREE.Points(geo, this.mat);
-        this.points.geometry.setDrawRange(0, this.activeCount);
+        this.points = new THREE.Points(geo, material);
+        this.points.geometry.setDrawRange(0, this.currentDensity);
         this.scene.add(this.points);
     }
 
     setupAI() {
         const video = document.createElement('video');
-        navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
-            video.srcObject = s; video.play();
+        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+            video.srcObject = stream; video.play();
             const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-            hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.85 });
-            hands.onResults(res => {
-                this.processor.update(res, window.innerWidth, window.innerHeight);
-                this.interact();
+            hands.setOptions({ 
+                maxNumHands: 2, 
+                modelComplexity: 1, 
+                minDetectionConfidence: 0.85,
+                minTrackingConfidence: 0.85 
             });
+
+            hands.onResults(res => {
+                this.handAI.update(res, window.innerWidth, window.innerHeight);
+                this.processInteraction();
+            });
+
             new Camera(video, { onFrame: async () => await hands.send({ image: video }) }).start();
         });
     }
 
-    interact() {
-        let totalVel = 0;
+    processInteraction() {
+        let totalPower = 0;
         ['left', 'right'].forEach(side => {
-            const h = this.processor.hands[side];
-            const p = this.processor.prevHands[side];
+            const h = this.handAI.hands[side];
+            const p = this.handAI.prevHands[side];
             if (h && p) {
-                const dx = (h.x - p.x) * 2.5;
-                const dy = (p.y - h.y) * 2.5;
-                this.fluid.applyForce(h.x, h.y, dx, dy, 200);
-                totalVel += Math.abs(dx) + Math.abs(dy);
+                const vx = (h.x - p.x) * this.params.handPower;
+                const vy = (p.y - h.y) * this.params.handPower;
+                this.fluid.addVelocity(h.x, h.y, vx, vy, this.params.vortexRadius);
+                totalPower += Math.abs(vx) + Math.abs(vy);
             }
         });
-        document.getElementById('h-status').innerText = totalVel > 0 ? "SIGNAL: STREAMING" : "SIGNAL: IDLE";
-        document.getElementById('h-meter').style.width = Math.min(totalVel * 10, 100) + "%";
+
+        const status = document.getElementById('ai-status');
+        const meter = document.getElementById('hand-energy');
+        status.innerText = totalPower > 2 ? "NEURAL_LINK: ACTIVE" : "NEURAL_LINK: IDLE";
+        meter.style.width = Math.min(totalPower * 5, 100) + "%";
     }
 
-    animate() {
-        requestAnimationFrame(() => this.animate());
+    mainLoop() {
+        requestAnimationFrame(() => this.mainLoop());
         const t = performance.now() * 0.001;
-        this.mat.uniforms.uTime.value = t;
-        this.fluid.update(t);
+        this.uniforms.uTime.value = t;
 
+        if (!this.points) return;
+
+        this.fluid.update();
+        
         const posAttr = this.points.geometry.attributes.position;
-        const lifeAttr = this.points.geometry.attributes.aLife;
+        const impactAttr = this.points.geometry.attributes.aImpact;
+        const count = this.points.geometry.drawRange.count;
 
-        for (let i = 0; i < this.activeCount; i++) {
-            const sx = this.pos[i*3] + window.innerWidth/2;
-            const sy = window.innerHeight/2 - this.pos[i*3+1];
+        for (let i = 0; i < count; i++) {
+            const px = this.posArr[i*3] + window.innerWidth/2;
+            const py = window.innerHeight/2 - this.posArr[i*3+1];
             
-            const flow = this.fluid.getVelocity(sx, sy);
+            const flow = this.fluid.getVelocity(px, py);
             
-            // Momentum Logic
-            this.vels[i*2] += flow.x * 0.25;
-            this.vels[i*2+1] -= flow.y * 0.25;
+            // GOAL 2: Momentum & Impact logic
+            const speed = Math.sqrt(flow.x**2 + flow.y**2);
+            if (speed > 0.1) this.impactArr[i] = 1.0;
+            else this.impactArr[i] *= 0.93; // Slow color decay
 
-            // Hand life (shine)
-            const speed = Math.sqrt(flow.x*flow.x + flow.y*flow.y);
-            if (speed > 0.05) this.life[i] = 1.0;
-            else this.life[i] *= 0.92;
+            this.velArr[i*2] += flow.x * 0.4;
+            this.velArr[i*2+1] -= flow.y * 0.4;
 
-            this.vels[i*2] *= 0.95;
-            this.vels[i*2+1] *= 0.95;
+            this.velArr[i*2] *= this.params.friction;
+            this.velArr[i*2+1] *= this.params.friction;
 
-            this.pos[i*3] += this.vels[i*2];
-            this.pos[i*3+1] += this.vels[i*2+1];
+            this.posArr[i*3] += this.velArr[i*2];
+            this.posArr[i*3+1] += this.velArr[i*2+1];
 
-            // Gentle Wispy Return
-            const pull = 0.005 + Math.sin(t + i * 0.001) * 0.002;
-            this.pos[i*3] += (this.origins[i*3] - this.pos[i*3]) * pull;
-            this.pos[i*3+1] += (this.origins[i*3+1] - this.pos[i*3+1]) * pull;
+            // GOAL 3: Natural Floating Snap-back
+            const breeze = 0.005 + Math.sin(t * 0.5 + i * 0.001) * 0.003;
+            this.posArr[i*3] += (this.orgArr[i*3] - this.posArr[i*3]) * breeze;
+            this.posArr[i*3+1] += (this.orgArr[i*3+1] - this.posArr[i*3+1]) * breeze;
         }
 
         posAttr.needsUpdate = true;
-        lifeAttr.needsUpdate = true;
+        impactAttr.needsUpdate = true;
         this.renderer.render(this.scene, this.camera);
     }
 }
-new SandSculpture();
+
+new SculptureEngine();
