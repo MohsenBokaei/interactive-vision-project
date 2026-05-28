@@ -1,12 +1,16 @@
-body { margin: 0; background: #000; color: #00ffcc; font-family: 'Courier New', monospace; overflow: hidden; }
-#ui-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 10; display: flex; justify-content: space-between; padding: 30px; }
-.panel { display: flex; flex-direction: column; gap: 20px; }
-.stat-group { border-left: 2px solid #00ffcc; padding-left: 15px; background: rgba(0, 255, 204, 0.05); padding-bottom: 5px; }
-label { display: block; font-size: 10px; opacity: 0.6; letter-spacing: 2px; }
-span { font-size: 16px; font-weight: bold; }
-.signal-bar { width: 100px; height: 4px; background: #111; margin-top: 5px; }
-#signal-l, #signal-r { height: 100%; width: 0%; background: #00ffcc; transition: width 0.1s; }
-
-#app-loader { position: fixed; inset: 0; background: #000; z-index: 1000; display: flex; align-items: center; justify-content: center; text-align: center; }
-.progress-container { width: 300px; height: 2px; background: #222; margin: 20px 0; }
-#progress-bar { width: 0%; height: 100%; background: #00ffcc; }
+body { margin: 0; background: #000; overflow: hidden; cursor: none; }
+#ui-layer {
+    position: absolute; inset: 0; z-index: 100;
+    pointer-events: none; /* Allows clicks to pass through to canvas */
+    padding: 40px; color: #fff; font-family: 'Courier New', monospace;
+}
+.control-box {
+    pointer-events: auto; /* Re-enables mouse for the slider only */
+    background: rgba(255,255,255,0.05); padding: 20px;
+    border-left: 3px solid #fff; width: 300px;
+}
+input[type=range] { width: 100%; cursor: pointer; accent-color: #fff; }
+.header { font-size: 10px; letter-spacing: 3px; margin-bottom: 10px; opacity: 0.7; }
+.status-panel { margin-top: 20px; font-size: 12px; }
+.meter-bg { width: 150px; height: 2px; background: #222; margin-top: 5px; }
+#h-meter { height: 100%; width: 0%; background: #fff; transition: width 0.1s; }
