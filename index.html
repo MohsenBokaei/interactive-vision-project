@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CINEMATIC_DATA_SCULPTURE // v5.0</title>
+    <title>ULTRA_DATA_SCULPTURE // v6.0</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -14,34 +14,15 @@
     <script src="hand_processor.js"></script>
 </head>
 <body>
-    <div id="app-loader">
-        <div class="loader-content">
-            <h1 class="glitch">GENESYS_CORE</h1>
-            <div class="progress-container"><div id="progress-bar"></div></div>
+    <div id="ui-layer">
+        <div class="control-box">
+            <div class="header">QUANTUM_DENSITY_CONTROL</div>
+            <input type="range" id="p-slider" min="50000" max="500000" step="10000" value="150000">
+            <div id="p-count">150,000 PARTICLES</div>
         </div>
-    </div>
-
-    <div id="ui-overlay">
-        <div class="panel left">
-            <div class="stat-group">
-                <label>PARTICLE_DENSITY</label>
-                <input type="range" id="density-slider" min="10000" max="300000" step="5000" value="100000">
-                <span id="p-count-display">100,000</span>
-            </div>
-            <div class="stat-group">
-                <label>SYSTEM_CLOCK</label>
-                <span id="clock-display">00:00:00</span>
-            </div>
-        </div>
-        <div class="panel right">
-            <div class="stat-group">
-                <label>NEURAL_LINK_L</label>
-                <div class="signal-bar"><div id="signal-l"></div></div>
-            </div>
-            <div class="stat-group">
-                <label>NEURAL_LINK_R</label>
-                <div class="signal-bar"><div id="signal-r"></div></div>
-            </div>
+        <div class="status-panel">
+            <div id="h-status">LINKING_NEURAL_SENSORS...</div>
+            <div class="meter-bg"><div id="h-meter"></div></div>
         </div>
     </div>
     <script src="sketch.js"></script>
