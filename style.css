@@ -1,0 +1,12 @@
+body { margin: 0; background: #000; color: #00ffcc; font-family: 'Courier New', monospace; overflow: hidden; }
+#ui-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 10; display: flex; justify-content: space-between; padding: 30px; }
+.panel { display: flex; flex-direction: column; gap: 20px; }
+.stat-group { border-left: 2px solid #00ffcc; padding-left: 15px; background: rgba(0, 255, 204, 0.05); padding-bottom: 5px; }
+label { display: block; font-size: 10px; opacity: 0.6; letter-spacing: 2px; }
+span { font-size: 16px; font-weight: bold; }
+.signal-bar { width: 100px; height: 4px; background: #111; margin-top: 5px; }
+#signal-l, #signal-r { height: 100%; width: 0%; background: #00ffcc; transition: width 0.1s; }
+
+#app-loader { position: fixed; inset: 0; background: #000; z-index: 1000; display: flex; align-items: center; justify-content: center; text-align: center; }
+.progress-container { width: 300px; height: 2px; background: #222; margin: 20px 0; }
+#progress-bar { width: 0%; height: 100%; background: #00ffcc; }
