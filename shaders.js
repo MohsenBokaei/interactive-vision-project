@@ -1,20 +1,24 @@
-const CustomShaders = {
+const DustShader = {
     vertex: `
-        attribute vec3 customColor;
-        attribute float size;
+        attribute float aSize;
+        attribute vec3 aColor;
         varying vec3 vColor;
         varying float vAlpha;
         uniform float uTime;
 
         void main() {
-            vColor = customColor;
-            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            vColor = aColor;
             
-            // Particles get larger/brighter when they move
-            float dist = length(position.xyz - vec3(0.0));
-            vAlpha = clamp(1.0 - (dist / 1000.0), 0.2, 1.0);
+            // Adding Brownian oscillation to the Z axis
+            vec3 pos = position;
+            pos.z += sin(uTime * 2.0 + position.x * 0.01) * 5.0;
             
-            gl_PointSize = size * (400.0 / -mvPosition.z);
+            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+            
+            // Atmospheric perspective (Dust fades in distance)
+            vAlpha = clamp(1.0 - (abs(mvPosition.z) / 1500.0), 0.0, 1.0);
+            
+            gl_PointSize = aSize * (1200.0 / -mvPosition.z);
             gl_Position = projectionMatrix * mvPosition;
         }
     `,
@@ -22,10 +26,12 @@ const CustomShaders = {
         varying vec3 vColor;
         varying float vAlpha;
         void main() {
-            float r = distance(gl_PointCoord, vec2(0.5));
-            if (r > 0.5) discard;
-            float strength = pow(1.0 - r * 2.0, 2.0);
-            gl_FragColor = vec4(vColor, strength * vAlpha);
+            float dist = distance(gl_PointCoord, vec2(0.5));
+            if (dist > 0.5) discard;
+            
+            // Soft-edged dust particle
+            float soft = pow(1.0 - dist * 2.0, 3.0);
+            gl_FragColor = vec4(vColor, soft * vAlpha * 0.8);
         }
     `
 };
