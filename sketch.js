@@ -1,269 +1,257 @@
-class HandIntelligence {
+class HandSensor {
     constructor() {
         this.history = { left: [], right: [] };
-        this.maxHistory = 8;
-        this.minConfidence = 0.85; 
-        this.persistence = { left: 0, right: 0 };
-        this.maxPersistence = 15;
-        this.currentPos = { left: null, right: null };
-        this.smoothedPos = { left: null, right: null };
+        this.isTracking = false;
+        this.smoothing = 0.8;
+        this.threshold = 0.85;
+        this.palmSize = 0;
     }
 
-    process(results) {
-        let detected = { left: false, right: false };
-
-        if (results.multiHandLandmarks && results.multiHandedness) {
-            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-                const landmarks = results.multiHandLandmarks[i];
-                const handedness = results.multiHandedness[i];
-                const score = handedness.score;
-                const label = handedness.label === "Left" ? "right" : "left";
-
-                if (score < this.minConfidence) continue;
-
-                if (!this.isValidHand(landmarks)) continue;
-
-                const rawX = (1 - landmarks[8].x) * window.innerWidth - window.innerWidth / 2;
-                const rawY = (0.5 - landmarks[8].y) * window.innerHeight;
-
-                this.updateHistory(label, { x: rawX, y: rawY });
-                detected[label] = true;
-                this.persistence[label] = this.maxPersistence;
-            }
-        }
-
-        this.handlePersistence("left", detected.left);
-        this.handlePersistence("right", detected.right);
-
-        return {
-            left: this.getSmoothed("left"),
-            right: this.getSmoothed("right")
-        };
-    }
-
-    isValidHand(landmarks) {
+    validateAnatomy(landmarks) {
+        // Anatomical filter to prevent head/shoulder misrecognition
         const wrist = landmarks[0];
-        const indexMcp = landmarks[5];
-        const pinkyMcp = landmarks[17];
+        const mcpIndex = landmarks[5];
+        const mcpPinky = landmarks[17];
+        const tipMiddle = landmarks[12];
+
+        const palmWidth = Math.hypot(mcpIndex.x - mcpPinky.x, mcpIndex.y - mcpPinky.y);
+        const handLength = Math.hypot(wrist.x - tipMiddle.x, wrist.y - tipMiddle.y);
         
-        const palmSize = Math.sqrt(
-            Math.pow(indexMcp.x - wrist.x, 2) + 
-            Math.pow(indexMcp.y - wrist.y, 2)
-        );
-
-        return palmSize > 0.05 && palmSize < 0.4;
+        this.palmSize = palmWidth;
+        
+        // Human hands have a specific length-to-width ratio (approx 1.5 - 2.5)
+        const ratio = handLength / palmWidth;
+        return ratio > 1.2 && ratio < 3.5;
     }
 
-    updateHistory(label, pos) {
-        this.history[label].push(pos);
-        if (this.history[label].length > this.maxHistory) {
-            this.history[label].shift();
+    update(results) {
+        let active = { left: null, right: null };
+        if (results.multiHandLandmarks) {
+            this.isTracking = true;
+            results.multiHandLandmarks.forEach((landmarks, idx) => {
+                const handedness = results.multiHandedness[idx].label;
+                const score = results.multiHandedness[idx].score;
+
+                if (score > this.threshold && this.validateAnatomy(landmarks)) {
+                    const label = handedness === "Left" ? "right" : "left"; 
+                    const pos = {
+                        x: (1 - landmarks[8].x) * window.innerWidth,
+                        y: landmarks[8].y * window.innerHeight
+                    };
+                    active[label] = this.smooth(label, pos);
+                }
+            });
+        } else {
+            this.isTracking = false;
         }
+        return active;
     }
 
-    handlePersistence(label, isDetected) {
-        if (!isDetected) {
-            this.persistence[label]--;
-            if (this.persistence[label] <= 0) {
-                this.history[label] = [];
-            }
+    smooth(label, pos) {
+        let hist = this.history[label];
+        if (hist.length === 0) {
+            this.history[label].push(pos);
+            return pos;
         }
-    }
-
-    getSmoothed(label) {
-        if (this.history[label].length === 0) return null;
-        let avgX = 0, avgY = 0;
-        this.history[label].forEach(p => {
-            avgX += p.x;
-            avgY += p.y;
-        });
-        return {
-            x: avgX / this.history[label].length,
-            y: avgY / this.history[label].length
+        const last = hist[hist.length - 1];
+        const smoothed = {
+            x: last.x * this.smoothing + pos.x * (1 - this.smoothing),
+            y: last.y * this.smoothing + pos.y * (1 - this.smoothing)
         };
+        this.history[label].push(smoothed);
+        if (this.history[label].length > 10) this.history[label].shift();
+        return smoothed;
     }
 }
 
-class SculptureEngine {
+class SculptureApp {
     constructor() {
-        this.particleCount = 50000;
-        this.initScene();
-        this.initFluid();
-        this.intelligence = new HandIntelligence();
-        this.initParticles();
-        this.initAI();
+        this.particleCount = 80000;
+        this.fluidRes = 25;
+        this.initSystems();
     }
 
-    initScene() {
-        this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
-        this.camera.position.z = 600;
+    async initSystems() {
+        this.updateLoading(10);
+        this.setupRenderer();
+        this.updateLoading(30);
+        this.setupFluid();
+        this.updateLoading(50);
+        await this.setupAssets();
+        this.updateLoading(80);
+        this.setupAI();
+        this.updateLoading(100);
+        
+        document.getElementById('loading-screen').style.display = 'none';
+        this.animate();
+    }
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    updateLoading(p) {
+        document.getElementById('progress').style.width = p + '%';
+    }
+
+    setupRenderer() {
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000);
+        this.camera.position.z = 1000;
+
+        this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(this.renderer.domElement);
 
-        window.addEventListener('resize', () => this.onResize());
+        window.addEventListener('resize', () => this.handleResize());
     }
 
-    initFluid() {
-        this.fluid = new FluidSimulation(window.innerWidth, window.innerHeight);
+    setupFluid() {
+        this.fluid = new FluidEngine(window.innerWidth, window.innerHeight);
+        this.sensor = new HandSensor();
     }
 
-    async initParticles() {
+    async setupAssets() {
         const loader = new THREE.TextureLoader();
-        const img = await new Promise(resolve => {
-            const i = new Image();
-            i.src = 'AdobeStock_421043104_Editorial_Use_Only.jpeg';
-            i.crossOrigin = "anonymous";
-            i.onload = () => resolve(i);
-        });
-
+        const texture = await loader.loadAsync('AdobeStock_421043104_Editorial_Use_Only.jpeg');
+        
+        // Sampling image for color distribution
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 128; canvas.height = 128;
-        ctx.drawImage(img, 0, 0, 128, 128);
-        const data = ctx.getImageData(0, 0, 128, 128).data;
+        ctx.drawImage(texture.image, 0, 0, 128, 128);
+        const imgData = ctx.getImageData(0, 0, 128, 128).data;
 
-        const geo = new THREE.BufferGeometry();
-        this.posArray = new Float32Array(this.particleCount * 3);
-        this.colArray = new Float32Array(this.particleCount * 3);
-        this.originArray = new Float32Array(this.particleCount * 2);
-        this.velArray = new Float32Array(this.particleCount * 2);
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(this.particleCount * 3);
+        const colors = new Float32Array(this.particleCount * 3);
+        const origins = new Float32Array(this.particleCount * 3);
+        const velocities = new Float32Array(this.particleCount * 3);
 
         for (let i = 0; i < this.particleCount; i++) {
-            const x = (Math.random() - 0.5) * window.innerWidth * 1.2;
-            const y = (Math.random() - 0.5) * window.innerHeight * 1.2;
-            
-            this.posArray[i*3] = x;
-            this.posArray[i*3+1] = y;
-            this.posArray[i*3+2] = (Math.random() - 0.5) * 50;
+            const x = (Math.random() - 0.5) * window.innerWidth * 1.5;
+            const y = (Math.random() - 0.5) * window.innerHeight * 1.5;
+            const z = (Math.random() - 0.5) * 100;
 
-            this.originArray[i*2] = x;
-            this.originArray[i*2+1] = y;
+            positions[i*3] = x; positions[i*3+1] = y; positions[i*3+2] = z;
+            origins[i*3] = x; origins[i*3+1] = y; origins[i*3+2] = z;
 
-            const rx = Math.floor(Math.random() * 128);
-            const ry = Math.floor(Math.random() * 128);
-            const idx = (ry * 128 + rx) * 4;
+            const ix = Math.floor(Math.random() * 128);
+            const iy = Math.floor(Math.random() * 128);
+            const idx = (iy * 128 + ix) * 4;
 
-            this.colArray[i*3] = data[idx] / 255;
-            this.colArray[i*3+1] = data[idx+1] / 255;
-            this.colArray[i*3+2] = data[idx+2] / 255;
+            colors[i*3] = imgData[idx] / 255;
+            colors[i*3+1] = imgData[idx+1] / 255;
+            colors[i*3+2] = imgData[idx+2] / 255;
         }
 
-        geo.setAttribute('position', new THREE.BufferAttribute(this.posArray, 3));
-        geo.setAttribute('color', new THREE.BufferAttribute(this.colArray, 3));
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('origin', new THREE.BufferAttribute(origins, 3));
 
-        const mat = new THREE.PointsMaterial({
-            size: 1.8,
-            vertexColors: true,
+        this.uniforms = {
+            uTime: { value: 0 },
+            uPointScale: { value: 2.5 }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: this.uniforms,
+            vertexShader: SimulationShader.vertex,
+            fragmentShader: SimulationShader.fragment,
             transparent: true,
-            opacity: 0.6,
             blending: THREE.AdditiveBlending,
             depthWrite: false
         });
 
-        this.points = new THREE.Points(geo, mat);
+        this.points = new THREE.Points(geometry, material);
         this.scene.add(this.points);
+        this.particleData = { positions, origins, velocities };
     }
 
-    async initAI() {
+    setupAI() {
         this.video = document.createElement('video');
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { width: 640, height: 480 } 
-        });
-        this.video.srcObject = stream;
-        this.video.play();
-
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
-
-        hands.setOptions({
-            maxNumHands: 2,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.8,
-            minTrackingConfidence: 0.8
-        });
-
-        hands.onResults((res) => {
-            const data = this.intelligence.process(res);
-            this.updateForces(data);
-        });
-
-        const camera = new Camera(this.video, {
-            onFrame: async () => { await hands.send({ image: this.video }); }
-        });
-        camera.start();
-        document.getElementById('overlay').innerText = "SYSTEM: ONLINE. DATA STREAM ACTIVE.";
+        navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+            .then(stream => {
+                this.video.srcObject = stream;
+                this.video.play();
+                
+                const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+                hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.8, minTrackingConfidence: 0.8 });
+                hands.onResults((res) => this.handleAIResults(res));
+                
+                const camera = new Camera(this.video, {
+                    onFrame: async () => { await hands.send({ image: this.video }); }
+                });
+                camera.start();
+            });
     }
 
-    updateForces(data) {
-        if (data.right) {
-            if (this.lastRight) {
-                const vx = data.right.x - this.lastRight.x;
-                const vy = data.right.y - this.lastRight.y;
-                this.fluid.addForce(data.right.x + window.innerWidth/2, window.innerHeight/2 - data.right.y, vx, vy, 150);
-            }
-            this.lastRight = { ...data.right };
-        } else { this.lastRight = null; }
-
-        if (data.left) {
-            if (this.lastLeft) {
-                const vx = data.left.x - this.lastLeft.x;
-                const vy = data.left.y - this.lastLeft.y;
-                this.fluid.addForce(data.left.x + window.innerWidth/2, window.innerHeight/2 - data.left.y, vx, vy, 150);
-            }
-            this.lastLeft = { ...data.left };
-        } else { this.lastLeft = null; }
+    handleAIResults(results) {
+        const hands = this.sensor.update(results);
+        document.getElementById('hand-status').innerText = this.sensor.isTracking ? 'H_TRACK: ACTIVE' : 'H_TRACK: SEARCHING...';
+        
+        if (hands.left) {
+            this.applyInteraction(hands.left, 'left');
+        }
+        if (hands.right) {
+            this.applyInteraction(hands.right, 'right');
+        }
     }
 
-    onResize() {
+    applyInteraction(pos, label) {
+        const last = this.sensor.history[label].length > 1 ? this.sensor.history[label][this.sensor.history[label].length - 2] : pos;
+        const vx = pos.x - last.x;
+        const vy = last.y - pos.y;
+        this.fluid.addVelocity(pos.x, pos.y, vx, vy, 150);
+    }
+
+    handleResize() {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    render() {
-        if (!this.points) return;
+    animate() {
+        requestAnimationFrame(() => this.animate());
+        
+        const time = performance.now() * 0.001;
+        this.uniforms.uTime.value = time;
+        this.fluid.step();
 
-        this.fluid.update();
         const posAttr = this.points.geometry.attributes.position;
+        const positions = posAttr.array;
+        const origins = this.points.geometry.attributes.origin.array;
+        const vels = this.particleData.velocities;
 
         for (let i = 0; i < this.particleCount; i++) {
-            const px = this.posArray[i*3];
-            const py = this.posArray[i*3+1];
-
-            const flow = this.fluid.getVelocity(px + window.innerWidth/2, window.innerHeight/2 - py);
-
-            this.velArray[i*2] += flow.x * 0.25;
-            this.velArray[i*2+1] += flow.y * 0.25;
-
-            this.velArray[i*2] *= 0.93;
-            this.velArray[i*2+1] *= 0.93;
-
-            this.posArray[i*3] += this.velArray[i*2];
-            this.posArray[i*3+1] += this.velArray[i*2+1];
-
-            const dx = this.originArray[i*2] - this.posArray[i*3];
-            const dy = this.originArray[i*2+1] - this.posArray[i*3+1];
+            const px = positions[i*3] + window.innerWidth / 2;
+            const py = window.innerHeight / 2 - positions[i*3+1];
             
-            this.posArray[i*3] += dx * 0.015;
-            this.posArray[i*3+1] += dy * 0.015;
-            
-            this.posArray[i*3+2] = Math.sin(Date.now() * 0.001 + i) * 10;
+            const cellX = Math.floor(px / this.fluid.res);
+            const cellY = Math.floor(py / this.fluid.res);
+
+            if (cellX >= 0 && cellX < this.fluid.cols && cellY >= 0 && cellY < this.fluid.rows) {
+                const idx = cellX + cellY * this.fluid.cols;
+                vels[i*3] += this.fluid.u[idx] * 0.2;
+                vels[i*3+1] -= this.fluid.v[idx] * 0.2;
+            }
+
+            // Return to origin force
+            vels[i*3] += (origins[i*3] - positions[i*3]) * 0.005;
+            vels[i*3+1] += (origins[i*3+1] - positions[i*3+1]) * 0.005;
+
+            // Apply friction
+            vels[i*3] *= 0.95;
+            vels[i*3+1] *= 0.95;
+
+            positions[i*3] += vels[i*3];
+            positions[i*3+1] += vels[i*3+1];
         }
 
         posAttr.needsUpdate = true;
         this.renderer.render(this.scene, this.camera);
-    }
-
-    loop() {
-        this.render();
-        requestAnimationFrame(() => this.loop());
+        
+        if (Math.random() > 0.9) {
+            document.getElementById('fps-counter').innerText = 'FPS: ' + Math.floor(1000/16);
+        }
     }
 }
 
-const engine = new SculptureEngine();
-engine.loop();
+const app = new SculptureApp();
