@@ -47,7 +47,7 @@ class FluidSimulation {
             let y = this.p.floor(i / this.cols);
             let n = this.p.noise(x * 0.1, y * 0.1, t);
             let angle = n * this.p.TWO_PI;
-            this.grid[i].add(p5.Vector.fromAngle(angle).mult(0.1));
+            this.grid[i].add(this.p.Vector.fromAngle(angle).mult(0.1));
         }
     }
 
