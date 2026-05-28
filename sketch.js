@@ -1,19 +1,22 @@
 const sketch = (p) => {
     let cam;
-    let greenCenter = null; // Right Hand
-    let blueCenter = null;  // Left Hand
+    let greenCenter = null; 
+    let blueCenter = null;  
     let imageParticles = [];
-    let motionRange = 0;
     let revealRadius = 80;
     let influenceRadius = 150;
-    let influenceStartTime = 0;
     let bluePath = [];
     let pathVisibilityDuration = 3000;
     let showCamera = false;
     let bgImg;
+    
+    // AI Tracking variables
     let hands;
-    let predictions = [];
-    let handedness = [];
+    
+    // --- PERSISTENCE VARIABLES (The Fix for Glitching) ---
+    let rightHandTimer = 0;
+    let leftHandTimer = 0;
+    const MAX_LOST_FRAMES = 15; // How many frames to "remember" the hand after it's lost
 
     p.preload = () => {
         bgImg = p.loadImage("AdobeStock_421043104_Editorial_Use_Only.jpeg");
@@ -23,7 +26,7 @@ const sketch = (p) => {
         p.createCanvas(1600, 900);
         bgImg.resize(p.width, p.height);
         bgImg.loadPixels();
-        // Particle System
+        
         for (let y = 0; y < bgImg.height; y += 12) {
             for (let x = 0; x < bgImg.width; x += 12) {
                 let index = (x + y * bgImg.width) * 4;
@@ -36,21 +39,19 @@ const sketch = (p) => {
         cam.size(640, 480);
         cam.hide();
 
+        // Optimized Hands Settings
         hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
         hands.setOptions({
-            maxNumHands: 2, // DETECT BOTH HANDS
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
+            maxNumHands: 2,
+            modelComplexity: 0, // 0 is much faster for movement than 1
+            minDetectionConfidence: 0.4, // Lowered slightly so it doesn't "drop" fast hands
+            minTrackingConfidence: 0.4
         });
 
-        hands.onResults((results) => {
-            predictions = results.multiHandLandmarks;
-            handedness = results.multiHandedness; // Get Left/Right labels
-        });
+        hands.onResults(onResults);
 
         const camera = new Camera(cam.elt, {
             onFrame: async () => {
@@ -62,6 +63,45 @@ const sketch = (p) => {
         camera.start();
     };
 
+    function onResults(results) {
+        let foundRight = false;
+        let foundLeft = false;
+
+        if (results.multiHandLandmarks && results.multiHandedness) {
+            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                let hand = results.multiHandLandmarks[i];
+                let label = results.multiHandedness[i].label; // "Left" or "Right"
+                
+                let tipX = (1 - hand[8].x) * p.width;
+                let tipY = hand[8].y * p.height;
+                let currentPos = p.createVector(tipX, tipY);
+
+                if (label === "Left") { // Mirror logic: AI Left = User Right
+                    if (!greenCenter) greenCenter = currentPos;
+                    else greenCenter = p5.Vector.lerp(greenCenter, currentPos, 0.4); // Faster lerp for speed
+                    foundRight = true;
+                    rightHandTimer = MAX_LOST_FRAMES; // Reset the "memory" timer
+                } else {
+                    if (!blueCenter) blueCenter = currentPos;
+                    else blueCenter = p5.Vector.lerp(blueCenter, currentPos, 0.4);
+                    foundLeft = true;
+                    leftHandTimer = MAX_LOST_FRAMES;
+                    bluePath.push({ pos: blueCenter.copy(), time: p.millis() });
+                }
+            }
+        }
+
+        // Only set to null if we haven't seen the hand for X frames
+        if (!foundRight) {
+            rightHandTimer--;
+            if (rightHandTimer <= 0) greenCenter = null;
+        }
+        if (!foundLeft) {
+            leftHandTimer--;
+            if (leftHandTimer <= 0) blueCenter = null;
+        }
+    }
+
     p.draw = () => {
         if (showCamera) {
             p.push();
@@ -71,45 +111,6 @@ const sketch = (p) => {
         } else {
             p.background(0);
 
-            // Logic to track Left vs Right independently
-            let foundRight = false;
-            let foundLeft = false;
-
-            if (predictions && predictions.length > 0) {
-                for (let i = 0; i < predictions.length; i++) {
-                    let hand = predictions[i];
-                    let label = handedness[i].label; // "Left" or "Right"
-                    
-                    // Landmark 8 is Index Tip
-                    let tipX = (1 - hand[8].x) * p.width;
-                    let tipY = hand[8].y * p.height;
-                    let currentPos = p.createVector(tipX, tipY);
-
-                    // Note: MediaPipe labels are mirrored. 
-                    // Usually "Left" label in code = Right Hand on screen.
-                    if (label === "Left") { 
-                        // RIGHT HAND (Green Center)
-                        if (!greenCenter) greenCenter = currentPos;
-                        else greenCenter = p5.Vector.lerp(greenCenter, currentPos, 0.2);
-                        foundRight = true;
-                    } else {
-                        // LEFT HAND (Blue Center)
-                        if (!blueCenter) blueCenter = currentPos;
-                        else blueCenter = p5.Vector.lerp(blueCenter, currentPos, 0.2);
-                        foundLeft = true;
-                        
-                        // Add to Blue Trail
-                        influenceStartTime = p.millis();
-                        bluePath.push({ pos: blueCenter.copy(), time: p.millis() });
-                    }
-                }
-            }
-
-            // Reset centers if hands are removed from camera
-            if (!foundRight) greenCenter = null;
-            if (!foundLeft) blueCenter = null;
-
-            // Blue Trail Logic
             bluePath = bluePath.filter(pt => p.millis() - pt.time < pathVisibilityDuration);
             for (let i = 1; i < bluePath.length; i++) {
                 let alpha = p.map(p.millis() - bluePath[i].time, 0, pathVisibilityDuration, 255, 0);
@@ -117,7 +118,6 @@ const sketch = (p) => {
                 p.line(bluePath[i-1].pos.x, bluePath[i-1].pos.y, bluePath[i].pos.x, bluePath[i].pos.y);
             }
 
-            // Motion and Particle rendering
             let motion = calculateMotion(cam);
             let motionRange = p.map(motion, 0, 255, 0, 10);
 
@@ -132,7 +132,6 @@ const sketch = (p) => {
                 part.show();
             }
 
-            // Visual Indicators
             if (greenCenter) { p.fill(0, 255, 0); p.noStroke(); p.ellipse(greenCenter.x, greenCenter.y, 15); }
             if (blueCenter) { p.fill(0, 150, 255); p.noStroke(); p.ellipse(blueCenter.x, blueCenter.y, 15); }
         }
@@ -142,8 +141,8 @@ const sketch = (p) => {
         img.loadPixels();
         let total = 0;
         if (img.pixels.length > 0) {
-            for (let i = 0; i < img.pixels.length; i += 800) { total += img.pixels[i]; }
-            return total / (img.pixels.length / 800);
+            for (let i = 0; i < img.pixels.length; i += 1000) { total += img.pixels[i]; }
+            return total / (img.pixels.length / 1000);
         }
         return 0;
     }
@@ -151,7 +150,6 @@ const sketch = (p) => {
     p.mousePressed = () => { showCamera = !showCamera; };
 };
 
-// --- PARTICLE CLASS (Keeping your requested original logic) ---
 class ImageParticle {
     constructor(p, x, y, c) {
         this.p = p; this.x = x; this.y = y; this.ox = x; this.oy = y;
@@ -162,7 +160,7 @@ class ImageParticle {
     isNear(center, r) { return this.p.dist(this.x, this.y, center.x, center.y) < r; }
     applyVortexEffect(center) {
         let dir = p5.Vector.sub(this.p.createVector(this.x, this.y), center).rotate(this.p.HALF_PI);
-        this.vx = dir.normalize().x * 4; this.vy = dir.y * 4;
+        this.vx = dir.normalize().x * 6; this.vy = dir.y * 6;
         this.influenced = true;
     }
     resetInfluence() { this.influenced = false; }
