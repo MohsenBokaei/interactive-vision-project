@@ -1,54 +1,61 @@
 class HandProcessor {
     constructor() {
-        this.data = { left: null, right: null };
-        this.prevData = { left: null, right: null };
-        this.confidence = 0.9;
-        this.smoothing = 0.25;
+        this.hands = { left: null, right: null };
+        this.prevHands = { left: null, right: null };
+        this.lostCounter = { left: 0, right: 0 };
+        this.maxLostFrames = 30; // Hand "Memory" to stop flickering
     }
 
-    // Logic to prevent "Head Tracking"
-    isHandValid(landmarks) {
+    isAnatomicallyCorrect(landmarks) {
         const wrist = landmarks[0];
-        const indexRoot = landmarks[5];
-        const pinkyRoot = landmarks[17];
-        
-        // Measuring the palm aspect ratio
-        const width = MathUtils.getDistance(indexRoot, pinkyRoot);
-        const length = MathUtils.getDistance(wrist, landmarks[9]);
-        
-        // Human hands are roughly 2x longer than palm width
-        // Heads are roughly 1:1. This filter kills head-tracking.
-        const ratio = length / width;
-        return (ratio > 1.3 && ratio < 3.5);
+        const mcpMiddle = landmarks[9];
+        const tipIndex = landmarks[8];
+        const tipPinky = landmarks[20];
+
+        // 1. Size Check: Heads are 3-4x larger than hands relative to distance
+        const handScale = Math.sqrt(Math.pow(wrist.x - mcpMiddle.x, 2) + Math.pow(wrist.y - mcpMiddle.y, 2));
+        if (handScale > 0.35 || handScale < 0.05) return false;
+
+        // 2. Aspect Ratio Check: Hand is long, heads are round
+        const handBreadth = Math.sqrt(Math.pow(tipIndex.x - tipPinky.x, 2) + Math.pow(tipIndex.y - tipPinky.y, 2));
+        const ratio = handScale / handBreadth;
+        return (ratio > 0.5 && ratio < 3.0);
     }
 
-    update(results, w, h) {
-        const current = { left: null, right: null };
-        
-        if (results.multiHandLandmarks) {
-            results.multiHandLandmarks.forEach((landmarks, idx) => {
-                const handedness = results.multiHandedness[idx];
-                if (handedness.score < this.confidence) return;
-                if (!this.isHandValid(landmarks)) return;
+    update(res, w, h) {
+        let detected = { left: false, right: false };
+
+        if (res.multiHandLandmarks) {
+            res.multiHandLandmarks.forEach((lm, i) => {
+                const handedness = res.multiHandedness[i];
+                if (handedness.score < 0.92) return;
+                if (!this.isAnatomicallyCorrect(lm)) return;
 
                 const label = handedness.label === "Left" ? "right" : "left";
-                const tip = landmarks[8];
-                
-                const rawX = (1 - tip.x) * w;
-                const rawY = tip.y * h;
+                const pos = { x: (1 - lm[8].x) * w, y: lm[8].y * h };
 
-                if (this.data[label]) {
-                    current[label] = {
-                        x: MathUtils.lerp(this.data[label].x, rawX, this.smoothing),
-                        y: MathUtils.lerp(this.data[label].y, rawY, this.smoothing)
-                    };
+                if (this.hands[label]) {
+                    this.prevHands[label] = { ...this.hands[label] };
+                    // Smooth Interpolation
+                    this.hands[label].x += (pos.x - this.hands[label].x) * 0.35;
+                    this.hands[label].y += (pos.y - this.hands[label].y) * 0.35;
                 } else {
-                    current[label] = { x: rawX, y: rawY };
+                    this.hands[label] = pos;
+                    this.prevHands[label] = pos;
                 }
+                this.lostCounter[label] = this.maxLostFrames;
+                detected[label] = true;
             });
         }
-        
-        this.prevData = JSON.parse(JSON.stringify(this.data));
-        this.data = current;
+
+        ['left', 'right'].forEach(side => {
+            if (!detected[side]) {
+                this.lostCounter[side]--;
+                if (this.lostCounter[side] <= 0) {
+                    this.hands[side] = null;
+                    this.prevHands[side] = null;
+                }
+            }
+        });
     }
 }
