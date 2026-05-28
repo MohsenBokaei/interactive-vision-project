@@ -1,42 +1,51 @@
 class FluidSolver {
     constructor(w, h) {
-        this.res = 24;
+        this.res = 22;
         this.cols = Math.ceil(w / this.res);
         this.rows = Math.ceil(h / this.res);
-        this.field = new Float32Array(this.cols * this.rows * 2);
-        this.friction = 0.965; // High friction for sand-like behavior
+        this.size = this.cols * this.rows;
+
+        this.u = new Float32Array(this.size); // Velocity X
+        this.v = new Float32Array(this.size); // Velocity Y
+        
+        this.friction = 0.96; 
     }
 
-    applyForce(x, y, vx, vy, radius) {
-        const gx = x / this.res;
-        const gy = y / this.res;
-        const gr = radius / this.res;
+    // This name matches the call in sketch.js exactly
+    addVelocity(x, y, vx, vy, radius) {
+        const gx = Math.floor(x / this.res);
+        const gy = Math.floor(y / this.res);
+        const gr = Math.floor(radius / this.res);
 
-        for (let j = -gr; j <= gr; j++) {
-            for (let i = -gr; i <= gr; i++) {
-                const c = Math.floor(gx + i);
-                const r = Math.floor(gy + j);
+        for (let i = -gr; i <= gr; i++) {
+            for (let j = -gr; j <= gr; j++) {
+                const c = gx + i;
+                const r = gy + j;
+
                 if (c >= 0 && c < this.cols && r >= 0 && r < this.rows) {
-                    const idx = (c + r * this.cols) * 2;
-                    const d = Math.sqrt(i*i + j*j);
-                    const weight = Math.pow(Math.max(0, 1 - d/gr), 2);
-                    this.field[idx] += vx * weight * 1.5;
-                    this.field[idx+1] += vy * weight * 1.5;
+                    const idx = c + r * this.cols;
+                    const d = Math.sqrt(i * i + j * j);
+                    if (d < gr) {
+                        const weight = Math.pow(1.0 - d / gr, 2);
+                        this.u[idx] += vx * weight;
+                        this.v[idx] += vy * weight;
+                    }
                 }
             }
         }
     }
 
-    update(time) {
-        for (let i = 0; i < this.field.length; i += 2) {
-            this.field[i] *= this.friction;
-            this.field[i+1] *= this.friction;
+    update() {
+        const t = Date.now() * 0.001;
+        for (let i = 0; i < this.size; i++) {
+            this.u[i] *= this.friction;
+            this.v[i] *= this.friction;
             
-            // Add natural atmospheric turbulence (Curl Noise approximation)
-            const x = (i/2) % this.cols;
-            const y = Math.floor((i/2) / this.cols);
-            this.field[i] += Math.sin(y * 0.15 + time * 0.4) * 0.015;
-            this.field[i+1] += Math.cos(x * 0.15 + time * 0.4) * 0.015;
+            // Add background turbulence
+            const x = i % this.cols;
+            const y = Math.floor(i / this.cols);
+            this.u[i] += Math.sin(y * 0.1 + t) * 0.02;
+            this.v[i] += Math.cos(x * 0.1 + t) * 0.02;
         }
     }
 
@@ -44,8 +53,8 @@ class FluidSolver {
         const c = Math.floor(x / this.res);
         const r = Math.floor(y / this.res);
         if (c >= 0 && c < this.cols && r >= 0 && r < this.rows) {
-            const idx = (c + r * this.cols) * 2;
-            return { x: this.field[idx], y: this.field[idx+1] };
+            const idx = c + r * this.cols;
+            return { x: this.u[idx], y: this.v[idx] };
         }
         return { x: 0, y: 0 };
     }
