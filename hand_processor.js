@@ -2,24 +2,14 @@ class HandProcessor {
     constructor() {
         this.hands = { left: null, right: null };
         this.prevHands = { left: null, right: null };
-        this.lostCounter = { left: 0, right: 0 };
-        this.maxLostFrames = 30; // Hand "Memory" to stop flickering
-    }
-
-    isAnatomicallyCorrect(landmarks) {
-        const wrist = landmarks[0];
-        const mcpMiddle = landmarks[9];
-        const tipIndex = landmarks[8];
-        const tipPinky = landmarks[20];
-
-        // 1. Size Check: Heads are 3-4x larger than hands relative to distance
-        const handScale = Math.sqrt(Math.pow(wrist.x - mcpMiddle.x, 2) + Math.pow(wrist.y - mcpMiddle.y, 2));
-        if (handScale > 0.35 || handScale < 0.05) return false;
-
-        // 2. Aspect Ratio Check: Hand is long, heads are round
-        const handBreadth = Math.sqrt(Math.pow(tipIndex.x - tipPinky.x, 2) + Math.pow(tipIndex.y - tipPinky.y, 2));
-        const ratio = handScale / handBreadth;
-        return (ratio > 0.5 && ratio < 3.0);
+        
+        // Stillness Tracking
+        this.anchorPoint = { left: null, right: null };
+        this.stillnessStartTime = { left: 0, right: 0 };
+        this.isStill = { left: false, right: false };
+        this.stillnessFactor = { left: 0, right: 0 }; // 0 to 1
+        
+        this.wobbleThreshold = 30; // Max pixels allowed to move to count as "still"
     }
 
     update(res, w, h) {
@@ -28,33 +18,51 @@ class HandProcessor {
         if (res.multiHandLandmarks) {
             res.multiHandLandmarks.forEach((lm, i) => {
                 const handedness = res.multiHandedness[i];
-                if (handedness.score < 0.92) return;
-                if (!this.isAnatomicallyCorrect(lm)) return;
-
                 const label = handedness.label === "Left" ? "right" : "left";
                 const pos = { x: (1 - lm[8].x) * w, y: lm[8].y * h };
 
+                // Handle Stillness Logic
+                if (!this.anchorPoint[label]) {
+                    this.anchorPoint[label] = pos;
+                    this.stillnessStartTime[label] = Date.now();
+                }
+
+                let distFromAnchor = Math.sqrt(
+                    Math.pow(pos.x - this.anchorPoint[label].x, 2) + 
+                    Math.pow(pos.y - this.anchorPoint[label].y, 2)
+                );
+
+                if (distFromAnchor > this.wobbleThreshold) {
+                    // Hand moved! Reset the 3-second timer
+                    this.anchorPoint[label] = pos;
+                    this.stillnessStartTime[label] = Date.now();
+                    this.isStill[label] = false;
+                    this.stillnessFactor[label] = 0;
+                } else {
+                    // Hand is holding still. Check time.
+                    let duration = Date.now() - this.stillnessStartTime[label];
+                    if (duration > 3000) { // 3 Second Threshold
+                        this.isStill[label] = true;
+                        // Gradually increase intensity after 3 seconds
+                        this.stillnessFactor[label] = Math.min(1.0, (duration - 3000) / 2000); 
+                    }
+                }
+
                 if (this.hands[label]) {
                     this.prevHands[label] = { ...this.hands[label] };
-                    // Smooth Interpolation
-                    this.hands[label].x += (pos.x - this.hands[label].x) * 0.35;
-                    this.hands[label].y += (pos.y - this.hands[label].y) * 0.35;
+                    this.hands[label].x += (pos.x - this.hands[label].x) * 0.2;
+                    this.hands[label].y += (pos.y - this.hands[label].y) * 0.2;
                 } else {
                     this.hands[label] = pos;
-                    this.prevHands[label] = pos;
                 }
-                this.lostCounter[label] = this.maxLostFrames;
                 detected[label] = true;
             });
         }
 
         ['left', 'right'].forEach(side => {
             if (!detected[side]) {
-                this.lostCounter[side]--;
-                if (this.lostCounter[side] <= 0) {
-                    this.hands[side] = null;
-                    this.prevHands[side] = null;
-                }
+                this.hands[side] = null;
+                this.stillnessFactor[side] = 0;
             }
         });
     }
