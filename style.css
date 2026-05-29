@@ -1,43 +1,53 @@
-body { margin: 0; background: #000; overflow: hidden; cursor: crosshair; }
+/* 
+   ULTRA-FIDELITY NEURAL SCULPTURE 
+   IMMERSIVE RENDER STYLES
+*/
 
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #000;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    /* Cursor is hidden to prevent distraction from the neural art */
+    cursor: none; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    /* Prevents the browser from highlighting the canvas on mobile/touch */
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+}
+
+/* 
+   Hidden UI Container: 
+   Keeping the selector here in case you add a subtle fade-in loader 
+   later, but currently, it will not render anything on screen.
+*/
 #interface-layer {
-    position: absolute;
-    inset: 0;
-    z-index: 100;
-    pointer-events: none; /* Allows hand tracking to work behind UI */
-    padding: 40px;
-    color: #fff;
-    font-family: 'Courier New', monospace;
+    display: none;
+    visibility: hidden;
+    pointer-events: none;
 }
 
-.ui-panel { 
-    pointer-events: auto; /* IMPORTANT: Re-enables mouse for slider */
-    background: rgba(255,255,255,0.05); 
-    border: 1px solid rgba(255,255,255,0.1); 
-    padding: 25px; 
-    width: 320px; 
-    backdrop-filter: blur(10px);
+/* 
+   Optimization for mobile browsers to ensure the 
+   address bar doesn't mess with the canvas height 
+*/
+@media screen and (max-height: 500px) {
+    body {
+        height: -webkit-fill-available;
+    }
 }
-
-input[type=range] { 
-    width: 100%; 
-    height: 4px; 
-    appearance: none; 
-    background: #333; 
-    outline: none; 
-    cursor: pointer; 
-    margin: 20px 0; 
-}
-
-input[type=range]::-webkit-slider-thumb { 
-    appearance: none; 
-    width: 16px; 
-    height: 16px; 
-    background: #fff; 
-    border-radius: 50%; 
-}
-
-.header-tag { font-size: 9px; letter-spacing: 4px; opacity: 0.5; }
-.data-readout { font-size: 18px; font-weight: bold; margin-top: 5px; }
-.meter-rail { width: 100%; height: 1px; background: #222; margin-top: 15px; }
-#neural-meter { height: 100%; width: 0%; background: #00ffcc; transition: width 0.1s; }
