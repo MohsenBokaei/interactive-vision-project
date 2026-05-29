@@ -14,41 +14,11 @@
     <script src="shaders.js"></script>
     
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
-        #interface-layer { position: absolute; inset: 0; z-index: 100; pointer-events: none; padding: 40px; color: #fff; }
-        .ui-panel { 
-            pointer-events: auto; background: rgba(255,255,255,0.03); 
-            border: 1px solid rgba(255,255,255,0.1); padding: 30px; 
-            width: 380px; backdrop-filter: blur(15px);
-        }
-        input[type=range] { 
-            width: 100%; height: 4px; appearance: none; background: #222; 
-            outline: none; cursor: pointer; margin: 25px 0; 
-        }
-        input[type=range]::-webkit-slider-thumb { 
-            appearance: none; width: 18px; height: 18px; background: #fff; border-radius: 50%; 
-        }
-        .header-tag { font-size: 9px; letter-spacing: 5px; opacity: 0.4; text-transform: uppercase; }
-        .data-readout { font-size: 20px; font-weight: 900; margin-top: 10px; }
-        .signal-block { margin-top: 40px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; }
-        .meter-rail { width: 100%; height: 1px; background: #222; margin-top: 15px; position: relative; }
-        #neural-meter { position: absolute; height: 100%; width: 0%; background: #00ffcc; transition: width 0.1s; }
+        body { margin: 0; background: #000; overflow: hidden; cursor: none; }
+        canvas { display: block; width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
-    <div id="interface-layer">
-        <div class="ui-panel">
-            <div class="header-tag">Quantum_Particle_Density</div>
-            <input type="range" id="density-input" min="100000" max="1000000" step="10000" value="250000">
-            <div id="density-readout" class="data-readout">250,000</div>
-            
-            <div class="signal-block">
-                <div class="header-tag">Neural_Hand_Telemetrics</div>
-                <div id="ai-label" class="data-readout">SCANNING...</div>
-                <div class="meter-rail"><div id="neural-meter"></div></div>
-            </div>
-        </div>
-    </div>
     <script src="sketch.js"></script>
 </body>
 </html>
