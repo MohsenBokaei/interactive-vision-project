@@ -48,8 +48,8 @@ class NeuralSculpture {
 
         this.points = new THREE.Points(geo, new THREE.ShaderMaterial({
             uniforms: { uTime: { value: 0 } },
-            vertexShader: FINAL_PROJECT_SHADERS.vertex,
-            fragmentShader: FINAL_PROJECT_SHADERS.fragment,
+            vertexShader: NEURAL_SHADERS.vertex,
+            fragmentShader: NEURAL_SHADERS.fragment,
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false
@@ -64,14 +64,12 @@ class NeuralSculpture {
         navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
             video.srcObject = stream;
             video.play();
-            
             const ai = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-            ai.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.92 });
+            ai.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.9 });
             ai.onResults(res => {
                 this.handAI.update(res, window.innerWidth, window.innerHeight);
                 this.handlePhysics();
             });
-            
             new Camera(video, { onFrame: async () => await ai.send({ image: video }) }).start();
         });
     }
@@ -82,8 +80,8 @@ class NeuralSculpture {
             const joints = this.handAI.rawLandmarks[side];
             const factor = this.handAI.stillFactor[side];
             if (h) {
-                const p = this.handAI.prevHands[side] || h;
-                this.fluid.addVelocity(h.x, h.y, (h.x - p.x)*5, (p.y - h.y)*5, 200);
+                const prev = this.handAI.prevHands[side] || h;
+                this.fluid.addVelocity(h.x, h.y, (h.x - prev.x)*5, (prev.y - h.y)*5, 200);
                 if (factor > 0 && joints.length > 0) {
                     joints.forEach(j => this.fluid.addReveal(j.x, j.y, 70, factor));
                 }
@@ -125,6 +123,4 @@ class NeuralSculpture {
         this.renderer.render(this.scene, this.camera);
     }
 }
-
-// Logic to wait for the Start Button click
 window.initSculpture = () => { new NeuralSculpture(); };
