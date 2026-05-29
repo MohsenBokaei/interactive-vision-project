@@ -2,7 +2,7 @@ const PROJECT_SHADERS = {
     vertex: `
         attribute float aSize;
         attribute vec3 aColor;
-        attribute float aReveal; // New Attribute: 0 to 1
+        attribute float aReveal;
         
         varying vec3 vColor;
         varying float vAlpha;
@@ -14,20 +14,24 @@ const PROJECT_SHADERS = {
             vReveal = aReveal;
             vec3 pos = position;
 
-            // GOAL: Hand presence makes the "Dust" more excited
-            float excitement = aReveal * 15.0;
-            pos.x += sin(uTime * 2.0 + pos.y) * excitement;
-            pos.y += cos(uTime * 2.0 + pos.x) * excitement;
+            // GPU PHYSICS: Breathing wind drift (Highly optimized)
+            float t = uTime * 0.5;
+            pos.x += sin(t + pos.y * 0.01) * 20.0;
+            pos.y += cos(t + pos.x * 0.01) * 20.0;
+            
+            // GOAL 3: Z-Axis natural drift (Closing and furthering)
+            pos.z += sin(t * 0.4 + (pos.x * 0.01)) * 80.0;
 
             vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
             
-            // Brighten based on reveal
-            vColor = mix(aColor * 0.2, aColor * 1.5, aReveal);
+            // GOAL 2: Cinematic Shine
+            vec3 shinyColor = vec3(0.8, 0.96, 1.0);
+            vColor = mix(aColor * 0.1, shinyColor, aReveal);
+
+            // Visibility Logic
+            vAlpha = aReveal * clamp(1.5 - (abs(mvPosition.z) / 1500.0), 0.0, 1.0);
             
-            // Opacity controls the dissolve
-            vAlpha = aReveal * clamp(1.2 - (abs(mvPosition.z) / 1200.0), 0.0, 1.0);
-            
-            gl_PointSize = aSize * (1.0 + aReveal * 2.0) * (1000.0 / -mvPosition.z);
+            gl_PointSize = aSize * (1.0 + aReveal * 4.0) * (1500.0 / -mvPosition.z);
             gl_Position = projectionMatrix * mvPosition;
         }
     `,
@@ -37,14 +41,14 @@ const PROJECT_SHADERS = {
         varying float vReveal;
 
         void main() {
-            float d = distance(gl_PointCoord, vec2(0.5));
-            if (d > 0.5) discard;
+            float r = distance(gl_PointCoord, vec2(0.5));
+            if (r > 0.5) discard;
 
-            // Sand grain with "glow" when fully revealed
-            float grain = pow(1.0 - d * 2.0, 3.0);
-            float glow = vReveal * pow(1.0 - d * 2.0, 10.0);
+            // Realistic Dust Grain math
+            float grain = pow(1.0 - r * 2.0, 2.5);
+            float core = pow(1.0 - r * 2.0, 15.0) * vReveal;
             
-            gl_FragColor = vec4(vColor + glow, grain * vAlpha);
+            gl_FragColor = vec4(vColor + core, grain * vAlpha);
         }
     `
 };
