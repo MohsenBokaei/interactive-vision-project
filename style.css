@@ -1,16 +1,43 @@
-body { margin: 0; background: #000; overflow: hidden; cursor: none; }
-#ui-layer {
-    position: absolute; inset: 0; z-index: 100;
-    pointer-events: none; /* Allows clicks to pass through to canvas */
-    padding: 40px; color: #fff; font-family: 'Courier New', monospace;
+body { margin: 0; background: #000; overflow: hidden; cursor: crosshair; }
+
+#interface-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none; /* Allows hand tracking to work behind UI */
+    padding: 40px;
+    color: #fff;
+    font-family: 'Courier New', monospace;
 }
-.control-box {
-    pointer-events: auto; /* Re-enables mouse for the slider only */
-    background: rgba(255,255,255,0.05); padding: 20px;
-    border-left: 3px solid #fff; width: 300px;
+
+.ui-panel { 
+    pointer-events: auto; /* IMPORTANT: Re-enables mouse for slider */
+    background: rgba(255,255,255,0.05); 
+    border: 1px solid rgba(255,255,255,0.1); 
+    padding: 25px; 
+    width: 320px; 
+    backdrop-filter: blur(10px);
 }
-input[type=range] { width: 100%; cursor: pointer; accent-color: #fff; }
-.header { font-size: 10px; letter-spacing: 3px; margin-bottom: 10px; opacity: 0.7; }
-.status-panel { margin-top: 20px; font-size: 12px; }
-.meter-bg { width: 150px; height: 2px; background: #222; margin-top: 5px; }
-#h-meter { height: 100%; width: 0%; background: #fff; transition: width 0.1s; }
+
+input[type=range] { 
+    width: 100%; 
+    height: 4px; 
+    appearance: none; 
+    background: #333; 
+    outline: none; 
+    cursor: pointer; 
+    margin: 20px 0; 
+}
+
+input[type=range]::-webkit-slider-thumb { 
+    appearance: none; 
+    width: 16px; 
+    height: 16px; 
+    background: #fff; 
+    border-radius: 50%; 
+}
+
+.header-tag { font-size: 9px; letter-spacing: 4px; opacity: 0.5; }
+.data-readout { font-size: 18px; font-weight: bold; margin-top: 5px; }
+.meter-rail { width: 100%; height: 1px; background: #222; margin-top: 15px; }
+#neural-meter { height: 100%; width: 0%; background: #00ffcc; transition: width 0.1s; }
