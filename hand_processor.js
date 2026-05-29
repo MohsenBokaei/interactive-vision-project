@@ -1,11 +1,11 @@
 class HandProcessor {
     constructor() {
         this.hands = { left: null, right: null };
-        this.rawLandmarks = { left: [], right: [] }; // All 21 joints
+        this.rawLandmarks = { left: [], right: [] };
         this.anchor = { left: null, right: null };
         this.stillStartTime = { left: 0, right: 0 };
         this.stillFactor = { left: 0, right: 0 }; 
-        this.wobbleLimit = 22; 
+        this.wobbleLimit = 35; // Better tolerance for human hands
         this.revealDelay = 3000; 
     }
 
@@ -14,17 +14,16 @@ class HandProcessor {
         if (res.multiHandLandmarks) {
             res.multiHandLandmarks.forEach((lm, i) => {
                 const handedness = res.multiHandedness[i];
-                if (handedness.score < 0.94) return;
+                if (handedness.score < 0.9) return;
                 
                 const label = handedness.label === "Left" ? "right" : "left";
-                const tip = lm[8]; // Index tip for positioning
+                const tip = lm[8];
                 const pos = { x: (1 - tip.x) * w, y: tip.y * h };
 
-                // Store all 21 joints for the "Wiry" look
                 this.rawLandmarks[label] = lm.map(p => ({
                     x: (1 - p.x) * w,
                     y: p.y * h,
-                    z: p.z * w // Z-depth for 3D fibers
+                    z: p.z * w
                 }));
 
                 if (!this.anchor[label]) {
@@ -41,14 +40,14 @@ class HandProcessor {
                 } else {
                     let elapsed = Date.now() - this.stillStartTime[label];
                     if (elapsed > this.revealDelay) {
-                        this.stillFactor[label] = Math.min(1.0, (elapsed - this.revealDelay) / 2500);
+                        this.stillFactor[label] = Math.min(1.0, (elapsed - this.revealDelay) / 2000);
                     }
                 }
 
                 if (!this.hands[label]) this.hands[label] = pos;
                 else {
-                    this.hands[label].x += (pos.x - this.hands[label].x) * 0.35;
-                    this.hands[label].y += (pos.y - this.hands[label].y) * 0.35;
+                    this.hands[label].x += (pos.x - this.hands[label].x) * 0.3;
+                    this.hands[label].y += (pos.y - this.hands[label].y) * 0.3;
                 }
                 detected[label] = true;
             });
@@ -56,6 +55,7 @@ class HandProcessor {
         ['left', 'right'].forEach(s => {
             if (!detected[s]) {
                 this.hands[s] = null;
+                this.anchor[s] = null;
                 this.stillFactor[s] = 0;
                 this.rawLandmarks[s] = [];
             }
